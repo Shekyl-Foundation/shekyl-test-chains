@@ -1,0 +1,226 @@
+# Copyright (c) 2026, The Shekyl Foundation
+#
+# All rights reserved.
+# BSD-3-Clause
+#
+# Publish one forged test chain to GHCR (shekyl-core's
+# docs/design/CHAIN_FORGE.md §10.4, CF-R11, CF-R14).
+#
+# The only way a chain reaches ghcr.io/shekyl-foundation/test-chains/<chain>:
+# no personal token pushes. It runs by hand from `main`, and its publishing
+# job waits in the `publish` environment for the Foundation's approval.
+#
+#   forge    (read-only token) checks out shekyl-core at the commit named,
+#            which must be in the history of `pin_ref`, builds the forge
+#            there and forges the chain's plan. The forged blocks.txt must
+#            be the one committed at that commit.
+#   publish  (`publish` environment, packages: write) packs the corpus, the
+#            trace and the manifest as an OCI artifact, offline first. Its
+#            creation time is the commit's committer time, never the push
+#            time, so the same commit always gives the same digest. If
+#            shekyl-core's pin file at `pin_ref` pins this chain at this
+#            commit, the digest must be the pinned one, or nothing is
+#            pushed. Then it pushes, reads the digest back from the
+#            registry, and prints the pin entry.
+#
+# shekyl-core's pin file is the only source of truth for what its CI
+# accepts: a pin changes only in a reviewed shekyl-core pull request, and
+# nothing here can change it. This workflow is the cache's writer
+# (CF-R6: a hosted chain is a cache of a deterministic forging).
+
+name: publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      chain:
+        description: "The chain: its plan is rust/shekyl-chain-forge/plans/<chain>.toml in shekyl-core"
+        required: true
+        type: string
+      core_commit:
+        description: "The shekyl-core commit to forge at (40 hex digits)"
+        required: true
+        type: string
+      pin_ref:
+        description: "The shekyl-core branch whose history holds the commit, and whose pin file a re-publish is held to"
+        required: true
+        type: string
+        default: dev
+
+permissions: {}
+
+concurrency:
+  group: publish-${{ inputs.chain }}
+  cancel-in-progress: false
+
+env:
+  CHAIN: ${{ inputs.chain }}
+  CORE_COMMIT: ${{ inputs.core_commit }}
+  PIN_REF: ${{ inputs.pin_ref }}
+  PACKAGE: ghcr.io/shekyl-foundation/test-chains
+
+jobs:
+  forge:
+    name: forge the chain at the named commit
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 120
+    steps:
+      - name: the inputs
+        run: |
+          printf '%s\n' "$CHAIN" | grep -qxE '[a-z0-9][a-z0-9-]*' || { echo "::error::chain '$CHAIN' is not a chain name"; exit 1; }
+          printf '%s\n' "$CORE_COMMIT" | grep -qxE '[0-9a-f]{40}' || { echo "::error::core_commit is not 40 hex digits"; exit 1; }
+          printf '%s\n' "$PIN_REF" | grep -qxE '[A-Za-z0-9._/-]+' || { echo "::error::pin_ref '$PIN_REF' is not a branch name"; exit 1; }
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          repository: Shekyl-Foundation/shekyl-core
+          ref: ${{ inputs.core_commit }}
+          path: core
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+      - name: the commit is in the pin branch's history, and names this chain
+        working-directory: core
+        run: |
+          git fetch --no-tags origin "refs/heads/$PIN_REF:refs/remotes/origin/$PIN_REF"
+          git merge-base --is-ancestor "$CORE_COMMIT" "origin/$PIN_REF" || { echo "::error::$CORE_COMMIT is not in the history of $PIN_REF"; exit 1; }
+          plan="rust/shekyl-chain-forge/plans/$CHAIN.toml"
+          test -f "$plan" || { echo "::error::$plan does not exist at $CORE_COMMIT"; exit 1; }
+          grep -qxF "chain = \"$CHAIN\"" "$plan" || { echo "::error::$plan does not name the chain $CHAIN"; exit 1; }
+          test -f "rust/shekyl-chain-forge/chains/$CHAIN/blocks.txt" || { echo "::error::no committed blocks.txt for $CHAIN at $CORE_COMMIT"; exit 1; }
+      - name: install Rust
+        uses: ./core/.github/actions/install-rust
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            core/rust/target
+          key: forge-${{ runner.os }}-${{ hashFiles('core/rust/Cargo.lock') }}
+          restore-keys: forge-${{ runner.os }}-
+      - name: forge
+        working-directory: core/rust
+        run: |
+          start=$(date +%s)
+          cargo run --locked --release -p shekyl-chain-forge --example forge -- \
+            --plan "shekyl-chain-forge/plans/$CHAIN.toml" --out "$RUNNER_TEMP/forged"
+          echo "forged in $(( $(date +%s) - start )) s (building included)"
+      - name: the forged blocks.txt is the committed one
+        run: |
+          if ! cmp "$RUNNER_TEMP/forged/blocks.txt" "core/rust/shekyl-chain-forge/chains/$CHAIN/blocks.txt"; then
+            echo "::error::forging $CHAIN at $CORE_COMMIT does not give its committed blocks.txt: the forge is not deterministic there, or the commit's ledger is stale"
+            exit 1
+          fi
+          sha256sum "$RUNNER_TEMP"/forged/*
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: forged
+          path: |
+            ${{ runner.temp }}/forged/corpus.e2
+            ${{ runner.temp }}/forged/trace.e2
+            ${{ runner.temp }}/forged/manifest.json
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish the chain
+    needs: forge
+    runs-on: ubuntu-24.04
+    environment: publish
+    permissions:
+      contents: read
+      packages: write
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          repository: Shekyl-Foundation/shekyl-core
+          ref: ${{ inputs.core_commit }}
+          path: core
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: forged
+          path: forged
+      - name: oras, from shekyl-core's pin at the commit (version and checksum)
+        run: echo "ORAS=$(python3 core/scripts/ci/fetch_test_chain.py --install-oras)" >> "$GITHUB_ENV"
+      - name: pack the artifact offline
+        working-directory: forged
+        run: |
+          created=$(TZ=UTC0 git -C ../core log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ "$CORE_COMMIT")
+          echo "CREATED=$created" >> "$GITHUB_ENV"
+          # Bare file names, so the layers' titles do not depend on a path.
+          "$ORAS" push --oci-layout "$RUNNER_TEMP/layout:$CHAIN" \
+            --artifact-type application/vnd.shekyl.test-chain \
+            --annotation "org.opencontainers.image.created=$created" \
+            --annotation "org.opencontainers.image.revision=$CORE_COMMIT" \
+            --annotation "org.opencontainers.image.source=https://github.com/Shekyl-Foundation/shekyl-test-chains" \
+            corpus.e2:application/vnd.shekyl.corpus.v4 \
+            trace.e2:application/vnd.shekyl.trace.v1 \
+            manifest.json:application/vnd.shekyl.manifest.v6+json > "$RUNNER_TEMP/push.out"
+          cat "$RUNNER_TEMP/push.out"
+          digest=$(sed -n 's/^Digest: //p' "$RUNNER_TEMP/push.out")
+          printf '%s\n' "$digest" | grep -qxE 'sha256:[0-9a-f]{64}' || { echo "::error::no digest from the offline pack"; exit 1; }
+          echo "DIGEST=$digest" >> "$GITHUB_ENV"
+      - name: a chain pinned at this commit re-publishes to its pinned digest
+        run: |
+          git -C core fetch --no-tags origin "refs/heads/$PIN_REF:refs/remotes/origin/$PIN_REF"
+          git -C core show "origin/$PIN_REF:rust/shekyl-chain-forge/chains/hosted.toml" > "$RUNNER_TEMP/pins.toml"
+          python3 - "$RUNNER_TEMP/pins.toml" <<'PY'
+          import os, sys, tomllib
+          pins = tomllib.load(open(sys.argv[1], "rb"))
+          chain, commit, digest = os.environ["CHAIN"], os.environ["CORE_COMMIT"], os.environ["DIGEST"]
+          for entry in pins.get("chain", []):
+              if entry["name"] != chain:
+                  continue
+              if entry["commit"] == commit:
+                  if entry["digest"] != digest:
+                      print(f"::error::{chain} is pinned at {commit} with {entry['digest']}; publishing that commit again gives {digest}. Nothing is pushed: the forging is not reproducible, and that is a determinism defect (CF-R2).")
+                      sys.exit(1)
+                  print(f"{chain}: a re-publish of the pinned commit, with the pinned digest {digest}")
+              else:
+                  print(f"{chain}: pinned at {entry['commit']}; this is a new version at {commit}")
+              break
+          else:
+              print(f"{chain}: not pinned on {os.environ['PIN_REF']} yet; this is its first version")
+          PY
+      - name: push, and read the digest back from the registry
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          printf '%s' "$TOKEN" | "$ORAS" login ghcr.io --username "$ACTOR" --password-stdin
+          # The tag is a label for people; nothing in shekyl-core reads it.
+          "$ORAS" cp --from-oci-layout "$RUNNER_TEMP/layout:$CHAIN" "$PACKAGE/$CHAIN:${CORE_COMMIT:0:12}"
+          "$ORAS" manifest fetch --descriptor "$PACKAGE/$CHAIN@$DIGEST" > "$RUNNER_TEMP/remote.json"
+          python3 -c 'import json,os,sys; d=json.load(open(sys.argv[1]))["digest"]; sys.exit(0 if d==os.environ["DIGEST"] else f"the registry holds {d}, not {os.environ[\"DIGEST\"]}")' "$RUNNER_TEMP/remote.json"
+          "$ORAS" logout ghcr.io
+      - name: the pin entry
+        working-directory: forged
+        run: |
+          {
+            echo "### $CHAIN at $CORE_COMMIT"
+            echo
+            echo "Digest \`$DIGEST\`. The pin entry for shekyl-core's \`rust/shekyl-chain-forge/chains/hosted.toml\`:"
+            echo
+            echo '```toml'
+            echo '[[chain]]'
+            echo "name = \"$CHAIN\""
+            echo "plan = \"rust/shekyl-chain-forge/plans/$CHAIN.toml\""
+            echo "commit = \"$CORE_COMMIT\""
+            echo "created = \"$CREATED\""
+            echo "reference = \"$PACKAGE/$CHAIN\""
+            echo "digest = \"$DIGEST\""
+            for pair in corpus.e2:application/vnd.shekyl.corpus.v4 trace.e2:application/vnd.shekyl.trace.v1 manifest.json:application/vnd.shekyl.manifest.v6+json; do
+              file=${pair%%:*}
+              echo
+              echo '[[chain.layer]]'
+              echo "file = \"$file\""
+              echo "media_type = \"${pair#*:}\""
+              echo "size = $(stat -c %s "$file")"
+              echo "sha256 = \"$(sha256sum "$file" | cut -d' ' -f1)\""
+            done
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
