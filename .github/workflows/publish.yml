@@ -195,8 +195,19 @@ jobs:
           # The tag is a label for people; nothing in shekyl-core reads it.
           "$ORAS" cp --from-oci-layout "$RUNNER_TEMP/layout:$CHAIN" "$PACKAGE/$CHAIN:${CORE_COMMIT:0:12}"
           "$ORAS" manifest fetch --descriptor "$PACKAGE/$CHAIN@$DIGEST" > "$RUNNER_TEMP/remote.json"
-          python3 -c 'import json,os,sys; d=json.load(open(sys.argv[1]))["digest"]; sys.exit(0 if d==os.environ["DIGEST"] else f"the registry holds {d}, not {os.environ[\"DIGEST\"]}")' "$RUNNER_TEMP/remote.json"
-          "$ORAS" logout ghcr.io
+          remote=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["digest"])' "$RUNNER_TEMP/remote.json")
+          if [ "$remote" != "$DIGEST" ]; then
+            echo "::error::the registry holds $remote for $CHAIN, not the packed $DIGEST"
+            exit 1
+          fi
+          echo "the registry holds $DIGEST for $CHAIN"
+      - name: log out of the registry
+        # Whether the push passed or not, the login does not outlive the job.
+        if: always()
+        run: |
+          if [ -n "${ORAS:-}" ]; then
+            "$ORAS" logout ghcr.io
+          fi
       - name: the pin entry
         working-directory: forged
         run: |
