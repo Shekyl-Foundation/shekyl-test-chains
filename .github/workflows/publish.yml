@@ -13,7 +13,10 @@
 #   forge    (read-only token) checks out shekyl-core at the commit named,
 #            which must be in the history of `pin_ref`, builds the forge
 #            there and forges the chain's plan. The forged blocks.txt must
-#            be the one committed at that commit.
+#            be the one committed at that commit. The forge at that commit
+#            also names the artifact's layers and their media types
+#            (`forge --layers`), so a layout change there ships under its
+#            own media type.
 #   publish  (`publish` environment, packages: write) packs the corpus, the
 #            trace and the manifest as an OCI artifact, offline first. Its
 #            creation time is the commit's committer time, never the push
@@ -106,6 +109,24 @@ jobs:
           cargo run --locked --release -p shekyl-chain-forge --example forge -- \
             --plan "shekyl-chain-forge/plans/$CHAIN.toml" --out "$RUNNER_TEMP/forged"
           echo "forged in $(( $(date +%s) - start )) s (building included)"
+      - name: the layers, as the forge at this commit names them
+        working-directory: core/rust
+        run: |
+          cargo run --locked --release -p shekyl-chain-forge --example forge -- --layers > "$RUNNER_TEMP/layers.txt"
+          cat "$RUNNER_TEMP/layers.txt"
+          python3 - "$RUNNER_TEMP/layers.txt" "$RUNNER_TEMP/forged" <<'PY'
+          import os, re, sys
+          lines = open(sys.argv[1]).read().split()
+          if not lines:
+              sys.exit("::error::the forge named no layers")
+          for line in lines:
+              if not re.fullmatch(r"[a-z0-9.]+:application/vnd\.shekyl\.[a-z0-9.+-]+", line):
+                  sys.exit(f"::error::{line!r} is not a layer (file:media_type)")
+              name = line.split(":", 1)[0]
+              if not os.path.isfile(os.path.join(sys.argv[2], name)):
+                  sys.exit(f"::error::the forge names the layer {name}, and the forging has no such file")
+          PY
+          cp "$RUNNER_TEMP/layers.txt" "$RUNNER_TEMP/forged/layers.txt"
       - name: the forged blocks.txt is the committed one
         run: |
           if ! cmp "$RUNNER_TEMP/forged/blocks.txt" "core/rust/shekyl-chain-forge/chains/$CHAIN/blocks.txt"; then
@@ -120,6 +141,7 @@ jobs:
             ${{ runner.temp }}/forged/corpus.e2
             ${{ runner.temp }}/forged/trace.e2
             ${{ runner.temp }}/forged/manifest.json
+            ${{ runner.temp }}/forged/layers.txt
           if-no-files-found: error
           retention-days: 7
 
@@ -152,14 +174,14 @@ jobs:
           created=$(TZ=UTC0 git -C ../core log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ "$CORE_COMMIT")
           echo "CREATED=$created" >> "$GITHUB_ENV"
           # Bare file names, so the layers' titles do not depend on a path.
+          # The layers and their media types are the forge's at this commit.
+          mapfile -t layers < layers.txt
           "$ORAS" push --oci-layout "$RUNNER_TEMP/layout:$CHAIN" \
             --artifact-type application/vnd.shekyl.test-chain \
             --annotation "org.opencontainers.image.created=$created" \
             --annotation "org.opencontainers.image.revision=$CORE_COMMIT" \
             --annotation "org.opencontainers.image.source=https://github.com/Shekyl-Foundation/shekyl-test-chains" \
-            corpus.e2:application/vnd.shekyl.corpus.v4 \
-            trace.e2:application/vnd.shekyl.trace.v1 \
-            manifest.json:application/vnd.shekyl.manifest.v6+json > "$RUNNER_TEMP/push.out"
+            "${layers[@]}" > "$RUNNER_TEMP/push.out"
           cat "$RUNNER_TEMP/push.out"
           digest=$(sed -n 's/^Digest: //p' "$RUNNER_TEMP/push.out")
           printf '%s\n' "$digest" | grep -qxE 'sha256:[0-9a-f]{64}' || { echo "::error::no digest from the offline pack"; exit 1; }
@@ -224,7 +246,7 @@ jobs:
             echo "created = \"$CREATED\""
             echo "reference = \"$PACKAGE/$CHAIN\""
             echo "digest = \"$DIGEST\""
-            for pair in corpus.e2:application/vnd.shekyl.corpus.v4 trace.e2:application/vnd.shekyl.trace.v1 manifest.json:application/vnd.shekyl.manifest.v6+json; do
+            while read -r pair; do
               file=${pair%%:*}
               echo
               echo '[[chain.layer]]'
@@ -232,6 +254,6 @@ jobs:
               echo "media_type = \"${pair#*:}\""
               echo "size = $(stat -c %s "$file")"
               echo "sha256 = \"$(sha256sum "$file" | cut -d' ' -f1)\""
-            done
+            done < layers.txt
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
