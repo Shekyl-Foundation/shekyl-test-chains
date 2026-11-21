@@ -15,17 +15,17 @@ The design is shekyl-core's [`docs/design/CHAIN_FORGE.md`](https://github.com/Sh
 
 | Layer | File | Media type |
 | --- | --- | --- |
-| the corpus: every block with its transaction bodies (corpus layout 4) | `corpus.e2` | `application/vnd.shekyl.corpus.v4` |
+| the corpus: every block with its transaction bodies, and the competing blocks a reorg offers (corpus layout 5) | `corpus.e2` | `application/vnd.shekyl.corpus.v5` |
 | the trace: each block's verdict and facts from a replay | `trace.e2` | `application/vnd.shekyl.trace.v1` |
 | the manifest: the plan, the seed, the schedule, the events, and the corpus's and trace's SHA-256 (format 6) | `manifest.json` | `application/vnd.shekyl.manifest.v6+json` |
 
-The artifact type is `application/vnd.shekyl.test-chain`. A layout or format change bumps the media type with its version constant. The manifest's annotations are the forged commit (`org.opencontainers.image.revision`), its committer time as the creation time (`org.opencontainers.image.created`, so publishing the same commit again gives the same digest), and this repository (`org.opencontainers.image.source`).
+The artifact type is `application/vnd.shekyl.test-chain`. A layout or format change bumps the media type with its version constant, and the publish workflow takes each layer's media type from the forged commit (`forge --layers`), so an artifact always carries the types of the commit it was forged at. The manifest's annotations are the forged commit (`org.opencontainers.image.revision`), its committer time as the creation time (`org.opencontainers.image.created`, so publishing the same commit again gives the same digest), and this repository (`org.opencontainers.image.source`).
 
 ## Publishing
 
 Only `.github/workflows/publish.yml` publishes, run by hand from `main` with three inputs: the chain, the shekyl-core commit to forge at, and the shekyl-core branch whose history holds that commit (`pin_ref`).
 
-1. **Forge** (read-only token). It checks out shekyl-core at the commit, builds the forge there, forges the plan, and requires the forged `blocks.txt` to be the one committed at that commit.
+1. **Forge** (read-only token). It checks out shekyl-core at the commit, builds the forge there, forges the plan, and requires the forged `blocks.txt` to be the one committed at that commit. The forge at that commit names the layers and their media types (`forge --layers`).
 2. **Publish** (the `publish` environment, which needs the Foundation's approval and deploys only from `main`). It packs the artifact offline and computes its digest. If shekyl-core's pin file on `pin_ref` already pins this chain at this commit, the digest must be the pinned one; otherwise nothing is pushed. Then it pushes, reads the digest back from the registry, and prints the pin entry for shekyl-core.
 
 The shekyl-core pull request that adds or moves a pin carries that entry. Each published version's manifest goes into `chains/<chain>/<commit>/manifest.json` here, with a note in [`RELEASES.md`](RELEASES.md), in a pull request of its own.
