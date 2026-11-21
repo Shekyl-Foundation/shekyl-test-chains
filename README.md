@@ -30,6 +30,10 @@ Only `.github/workflows/publish.yml` publishes, run by hand from `main` with thr
 
 The shekyl-core pull request that adds or moves a pin carries that entry. Each published version's manifest goes into `chains/<chain>/<commit>/manifest.json` here, with a note in [`RELEASES.md`](RELEASES.md), in a pull request of its own.
 
+## Checks
+
+Every pull request and every push to `main` runs `.github/workflows/check.yml`: `actionlint` on the workflows (with shellcheck on each `run:` script), each embedded `<<'PY'` block compiled, and the release record held to the registry. Every `RELEASES.md` entry names its committed manifest, every committed manifest has its entry, and each is the manifest the registry published, read anonymously by the entry's digest (`scripts/check.py`; `--selftest` plants each failure).
+
 ## Fetching a chain
 
 From a shekyl-core checkout:

@@ -1,0 +1,64 @@
+# Copyright (c) 2026, The Shekyl Foundation
+#
+# All rights reserved.
+# BSD-3-Clause
+#
+# The checks on this repository's pull requests and on `main`: what can be
+# wrong here without anything in shekyl-core noticing, since shekyl-core
+# holds every chain to its own pin.
+#
+#   the workflows  `actionlint` on every workflow (with shellcheck on each
+#                  `run:` script; the runner has it), and each embedded
+#                  `<<'PY'` block compiled (scripts/check.py), so a broken
+#                  `publish.yml` is red here, not at the next approved run.
+#   the record     every RELEASES.md entry names its committed
+#                  chains/<chain>/<commit>/manifest.json, every committed
+#                  manifest has its entry, and each manifest is the one the
+#                  registry published: its SHA-256 is the `manifest.json`
+#                  layer of the artifact the entry's digest names, read from
+#                  GHCR anonymously by that digest (scripts/check.py).
+#
+# Cost: under a minute on the hosted runner, no build and no layer
+# download. `actionlint` is pinned by version and by its archive's SHA-256
+# from the release's checksums file (v1.7.12, released 2026-03-30).
+
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: the workflows and the release record
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      ACTIONLINT_VERSION: "1.7.12"
+      ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: actionlint, pinned
+        run: |
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl -fsSL -o "$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          printf '%s  %s\n' "$ACTIONLINT_SHA256" "$archive" > "$RUNNER_TEMP/actionlint.sha256"
+          sha256sum --check --strict "$RUNNER_TEMP/actionlint.sha256"
+          tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
+          shellcheck --version
+          "$RUNNER_TEMP/actionlint" -color
+      - name: the checks refuse what they must (selftest)
+        run: python3 scripts/check.py --selftest
+      - name: the workflows' Python, and the release record against the registry
+        run: python3 scripts/check.py
