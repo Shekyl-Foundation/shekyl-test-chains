@@ -1,0 +1,44 @@
+{
+  "format_version": 6,
+  "chain": "shard-fill",
+  "plan": {
+    "path": "rust/shekyl-chain-forge/plans/shard-fill.toml",
+    "sha256": "a2c18ceffd5139c393a1e3d1c59cab836b62e18e197dc27a009ec215a5b81411"
+  },
+  "seed": "26255c2f34c9e1a7c4fc710c277841d2d92af6809115ea7c6e6aeddf1e27e06e",
+  "network": "regtest",
+  "genesis_hash": "5a6ab91ea03c27ccf27aef62a3a5b4552625a5a2def4bf2566f63f62fbd24fe9",
+  "schedule": {
+    "settlement_epoch_blocks": 100,
+    "reorg_cap_blocks": 50,
+    "fixed_difficulty": 1,
+    "block_seconds": 1
+  },
+  "corpus_format_version": 5,
+  "blocks": 980,
+  "tip_height": 979,
+  "transactions": 832,
+  "corpus_sha256": "e9320e381de2247617c075ae32cc692ea8b07fccec60b4bd0622b330ff8f7c1f",
+  "trace_sha256": "1c79c36f8657ddbc79d38a4f12fef923199fe9cfc1c8205fb2f193a28dc4bd62",
+  "events": [
+    {
+      "name": "shard-0-closed",
+      "height": 945,
+      "branch": "main",
+      "record": 945
+    },
+    {
+      "name": "shard-1-closed",
+      "height": 962,
+      "branch": "main",
+      "record": 962
+    },
+    {
+      "name": "shard-2-closed",
+      "height": 979,
+      "branch": "main",
+      "record": 979
+    }
+  ],
+  "switches": []
+}
