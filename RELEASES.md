@@ -2,6 +2,13 @@
 
 One entry per published chain version, newest first: the chain, the shekyl-core commit it was forged at, the artifact's digest, what the chain is for, and what moved it if it replaced an earlier version.
 
+## shard-fill at shekyl-core `6bef7f0fbd`
+
+- **Digest:** `sha256:8e9fb90d9099dbf159e1447bf2b3daa4d35c32e884e3c1cbf3ec129b4241e175`, published by the publish workflow's run 44932808209 (2026-11-21), forged at `6bef7f0fbdcaa82d6fa0169b82430b042389119c` (shekyl-core #1500, `CF-4b`), pinned there.
+- **Manifest:** [`chains/shard-fill/6bef7f0fbdcaa82d6fa0169b82430b042389119c/manifest.json`](chains/shard-fill/6bef7f0fbdcaa82d6fa0169b82430b042389119c/manifest.json) (SHA-256 `93c5a9ad…7ed2`, the pinned layer).
+- **For:** three shards closed by real spends, at regtest's identity and difficulty 1: the chain the ingest's scenario fills and the chain store's prune and slash tests build on.
+- **Moved by:** trace version 2 (`CF-4b`). The trace carries the store's tables digest at each of the chain's three indexed events, under `application/vnd.shekyl.trace.v2`. The blocks are the earlier version's (`blocks.txt` byte-identical) and so is the corpus (`e9320e38…`); only the trace and the manifest moved.
+
 ## shard-fill at shekyl-core `7e1f143424`
 
 - **Digest:** `sha256:568aca6c0776228da682b71d5766262208180ad18b0a9b24a0f2e82f9b01a300`, published by the publish workflow's run 44857446184 (2026-11-21), forged at `7e1f143424e17151de3c48ea6b682c812ffa4324` (shekyl-core #1491, `CF-3`), pinned there.

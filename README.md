@@ -16,7 +16,7 @@ The design is shekyl-core's [`docs/design/CHAIN_FORGE.md`](https://github.com/Sh
 | Layer | File | Media type |
 | --- | --- | --- |
 | the corpus: every block with its transaction bodies, and the competing blocks a reorg offers (corpus layout 5) | `corpus.e2` | `application/vnd.shekyl.corpus.v5` |
-| the trace: each block's verdict and facts from a replay | `trace.e2` | `application/vnd.shekyl.trace.v1` |
+| the trace: each block's verdict and facts from a replay, and the store's tables digest at each indexed event (trace version 2) | `trace.e2` | `application/vnd.shekyl.trace.v2` |
 | the manifest: the plan, the seed, the schedule, the events, and the corpus's and trace's SHA-256 (format 6) | `manifest.json` | `application/vnd.shekyl.manifest.v6+json` |
 
 The artifact type is `application/vnd.shekyl.test-chain`. A layout or format change bumps the media type with its version constant, and the publish workflow takes each layer's media type from the forged commit (`forge --layers`), so an artifact always carries the types of the commit it was forged at. The manifest's annotations are the forged commit (`org.opencontainers.image.revision`), its committer time as the creation time (`org.opencontainers.image.created`, so publishing the same commit again gives the same digest), and this repository (`org.opencontainers.image.source`).
