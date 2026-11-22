@@ -2,6 +2,13 @@
 
 One entry per published chain version, newest first: the chain, the shekyl-core commit it was forged at, the artifact's digest, what the chain is for, and what moved it if it replaced an earlier version.
 
+## shard-fill at shekyl-core `30042dfc9a`
+
+- **Digest:** `sha256:6f756839f47b11e0e5fa2c0eab717c94c6f8a7a2fce0faec87a804fd63255629`, published by the publish workflow's run 45071747638 (2026-11-22), forged at `30042dfc9a37926f721a38c7a96805aa3372a1b5` (shekyl-core #1524, `CF-R29`), pinned there.
+- **Manifest:** [`chains/shard-fill/30042dfc9a37926f721a38c7a96805aa3372a1b5/manifest.json`](chains/shard-fill/30042dfc9a37926f721a38c7a96805aa3372a1b5/manifest.json) (SHA-256 `a11f91d4…aac39`, the pinned layer).
+- **For:** three shards closed by real spends, at regtest's identity and difficulty 1: the chain the ingest's scenario fills and the chain store's prune and slash tests build on.
+- **Moved by:** forged fees (`CF-R29`). Every forged transaction pays the standard rung of the fee ladder the daemon serves for its block, the tier a wallet pays by default, and passed the daemon's pool before its block was mined, so a daemon loads the chain through its own acceptance. The first moved block is height 928, the first spend; blocks 0 to 927 are the earlier version's. The block count, the transaction count and the shards' close heights (945, 962, 979) are unchanged. The corpus (`56744607…`), the trace (`9036692e…`) and the manifest moved.
+
 ## shard-fill at shekyl-core `6bef7f0fbd`
 
 - **Digest:** `sha256:8e9fb90d9099dbf159e1447bf2b3daa4d35c32e884e3c1cbf3ec129b4241e175`, published by the publish workflow's run 44932808209 (2026-11-21), forged at `6bef7f0fbdcaa82d6fa0169b82430b042389119c` (shekyl-core #1500, `CF-4b`), pinned there.
