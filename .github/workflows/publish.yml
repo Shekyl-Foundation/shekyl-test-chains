@@ -65,7 +65,13 @@ env:
 jobs:
   forge:
     name: forge the chain at the named commit
-    runs-on: ubuntu-24.04
+    # The Foundation's self-hosted runner, not a hosted one: the build and
+    # the forging are this workflow's runner time (20 to 30 minutes hosted
+    # with a warm cache, over an hour cold), and the runner has 8 cores to
+    # the hosted runner's 4. One job per throwaway container, with no route
+    # to the Foundation's own network. The publishing job stays hosted, so
+    # the registry's write token never reaches it.
+    runs-on: [self-hosted, shekyl-gate]
     permissions:
       contents: read
     timeout-minutes: 120

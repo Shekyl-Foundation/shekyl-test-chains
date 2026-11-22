@@ -1,0 +1,10 @@
+# Copyright (c) 2026, The Shekyl Foundation
+#
+# All rights reserved.
+# BSD-3-Clause
+#
+# The labels of the Foundation's self-hosted runners, which actionlint
+# otherwise refuses as unknown. `shekyl-gate`: the forge job in publish.yml.
+self-hosted-runner:
+  labels:
+    - shekyl-gate
