@@ -74,7 +74,11 @@ jobs:
     runs-on: [self-hosted, shekyl-gate]
     permissions:
       contents: read
-    timeout-minutes: 120
+    # Chain L (CF-4b) is the longest plan: on this runner its build took 7
+    # minutes and its forging 6,578 s, 117 minutes in all (2026-11-28, run
+    # 46104667127, cancelled at the old 120 just before its comparison). The
+    # limit leaves that room again.
+    timeout-minutes: 240
     steps:
       - name: the inputs
         run: |
